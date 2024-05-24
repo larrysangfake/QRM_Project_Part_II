@@ -1,0 +1,435 @@
+---
+title: "Midterm Part 2"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code.
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*.
+
+Install packages if not already installed and load required libraries.
+
+```{r}
+# Install necessary packages if not already installed
+if (!require("MASS")) install.packages("MASS")
+if (!require("copula")) install.packages("copula")
+if (!require("ggplot2")) install.packages("ggplot2")
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("knitr")) install.packages("knitr")
+if (!require("kableExtra")) install.packages("kableExtra")
+
+# Load required libraries
+library(dplyr)
+library(knitr)
+library(kableExtra)
+library(MASS)
+library(copula)
+library(ggplot2)
+```
+
+1.  
+
+    (a) Generate 1000, 10000, and 100000 pairs of uniform random variables U and V. Provide a brief summary of the sample statistics (mean and standard deviation) for each sample size.
+
+```{r}
+# Sample sizes
+sample_sizes <- c(1000, 10000, 100000)
+
+# Simulate uniform random variables
+simulate_uniform_rvs <- function(n) {
+  set.seed(123)  # For reproducibility
+  U <- runif(n)
+  V <- runif(n)
+  return(list(U = U, V = V))
+}
+
+# Simulate for each sample size
+uniform_samples <- lapply(sample_sizes, simulate_uniform_rvs)
+
+# Print brief summary statistics for verification
+summary_stats <- lapply(uniform_samples, function(sample) {
+  U <- sample$U
+  V <- sample$V
+  return(data.frame(
+    Sample_Size = length(U),
+    Mean_U = mean(U), SD_U = sd(U),
+    Mean_V = mean(V), SD_V = sd(V)
+  ))
+})
+
+print(summary_stats)
+
+```
+
+1(b)
+
+```{r}
+# Parameters for log-normal distribution
+mean_X <- 50
+var_X <- 25^2
+mean_Y <- 50
+var_Y <- 40^2
+
+# Calculate parameters for log-normal distribution
+mu_X <- log(mean_X^2 / sqrt(var_X + mean_X^2))
+sigma_X <- sqrt(log(1 + var_X / mean_X^2))
+
+mu_Y <- log(mean_Y^2 / sqrt(var_Y + mean_Y^2))
+sigma_Y <- sqrt(log(1 + var_Y / mean_Y^2))
+
+# Function to simulate log-normal RVs from previous uniform samples
+simulate_lognormal_rvs <- function(U, V, mu_X, sigma_X, mu_Y, sigma_Y) {
+  X <- qlnorm(U, mu_X, sigma_X)
+  Y <- qlnorm(V, mu_Y, sigma_Y)
+  
+  return(list(X = X, Y = Y))
+}
+
+# Generate log-normal variables for each sample size
+lognormal_samples <- lapply(uniform_samples, function(sample) {
+  simulate_lognormal_rvs(sample$U, sample$V, mu_X, sigma_X, mu_Y, sigma_Y)
+})
+
+# Print brief summary statistics for verification
+lognormal_summary_stats <- lapply(lognormal_samples, function(sample) {
+  X <- sample$X
+  Y <- sample$Y
+  return(data.frame(
+    Sample_Size = length(X),
+    Mean_X = mean(X), SD_X = sd(X),
+    Mean_Y = mean(Y), SD_Y = sd(Y)
+  ))
+})
+
+print(lognormal_summary_stats)
+
+```
+
+1(c)
+
+```{r}
+# Function to calculate empirical mean and standard deviation
+calculate_statistics <- function(samples) {
+  X <- samples$X
+  Y <- samples$Y
+  mean_X_empirical <- mean(X)
+  sd_X_empirical <- sd(X)
+  mean_Y_empirical <- mean(Y)
+  sd_Y_empirical <- sd(Y)
+  return(data.frame(
+    Variable = c("X", "Y"),
+    Mean_Empirical = c(mean_X_empirical, mean_Y_empirical),
+    SD_Empirical = c(sd_X_empirical, sd_Y_empirical),
+    Mean_Theoretical = c(mean_X, mean_Y),
+    SD_Theoretical = c(sqrt(var_X), sqrt(var_Y))
+  ))
+}
+
+# Calculate statistics for each sample size
+statistics_results <- lapply(lognormal_samples, calculate_statistics)
+
+# Print results in table format
+statistics_results
+```
+
+1(d) Additional Information Needed Covariance or Correlation between X and Y: Covariance (Cov(X,Y)): This measures the degree to which the returns of X and Y change together. It's essential to determine the portfolio's risk. Correlation (ρX,Y): This is a standardized measure of the relationship between X and Y, ranging from -1 to 1. It is often more interpretable than covariance.
+
+Dependency Structure: If X and Y are not independent, knowing their joint distribution or copula is important. The copula captures the dependency structure between the variables, which affects the combined risk and return of the portfolio Z. Copula Parameters: For example, if using a Gaussian copula, we need the correlation matrix. For other copulas, we need the specific parameters that define the dependency structure.
+
+```{r}
+# Function to construct linear portfolio and calculate necessary information
+construct_portfolio <- function(samples) {
+  X <- samples$X
+  Y <- samples$Y
+  Z <- X + Y
+  mean_Z <- mean(Z)
+  sd_Z <- sd(Z)
+  return(list(Z = Z, mean_Z = mean_Z, sd_Z = sd_Z))
+}
+
+# Construct portfolios for each sample size
+portfolio_results <- lapply(lognormal_samples, construct_portfolio)
+
+# Print results for verification
+portfolio_results
+
+```
+
+2(a)
+
+```{r}
+# Function to calculate VaR
+calculate_VaR <- function(samples, alpha) {
+  return(quantile(samples, probs = alpha))
+}
+
+#define alpha
+alpha <- 0.995
+
+VaR_results <-lapply(lognormal_samples, function(samples) {
+  X <- samples$X
+  Y <- samples$Y
+  
+  VaR_X <- calculate_VaR(X, alpha)
+  VaR_Y <- calculate_VaR(Y, alpha)
+  
+  return(list(VaR_X = VaR_X, VaR_Y = VaR_Y))
+})
+
+# Print VaR results
+VaR_results_table <- data.frame(VaR_results)
+VaR_results_table
+```
+
+2(b)
+
+```{r}
+# New function to simulate log-normal RVs from uniform samples using n, disregarding previous U and V
+simulate_lognormal_rvs1 <- function(n, mu_X, sigma_X, mu_Y, sigma_Y) {
+  U <- runif(n)
+  V <- runif(n)
+  X <- qlnorm(U, mu_X, sigma_X)
+  Y <- qlnorm(V, mu_Y, sigma_Y)
+  return(list(X = X, Y = Y))
+}
+# Function to perform VaR stability analysis
+VaR_stability_analysis <- function(n, num_iterations, alpha, mu_X, sigma_X, mu_Y, sigma_Y) {
+  VaR_X_values <- numeric(num_iterations)
+  VaR_Y_values <- numeric(num_iterations)
+  
+  for (i in 1:num_iterations) {
+    samples <- simulate_lognormal_rvs1(n, mu_X, sigma_X, mu_Y, sigma_Y)
+    X <- samples$X
+    Y <- samples$Y
+    
+    VaR_X_values[i] <- calculate_VaR(X, alpha)
+    VaR_Y_values[i] <- calculate_VaR(Y, alpha)
+  }
+  
+  std_dev_VaR_X <- sd(VaR_X_values)
+  std_dev_VaR_Y <- sd(VaR_Y_values)
+  
+  return(list(std_dev_VaR_X = std_dev_VaR_X, std_dev_VaR_Y = std_dev_VaR_Y))
+}
+
+# Perform VaR stability analysis for each sample size
+num_iterations <- 100
+
+stability_results <- lapply(sample_sizes, function(n) {
+  VaR_stability_analysis(n, num_iterations, alpha, mu_X, sigma_X, mu_Y, sigma_Y)
+})
+
+# Print stability results
+stability_results
+```
+
+2(c)
+
+```{r}
+comparison_table <- data.frame(
+  Sample_Size = sample_sizes,
+  Std_Dev_VaR_X = sapply(stability_results, function(res) res$std_dev_VaR_X),
+  Std_Dev_VaR_Y = sapply(stability_results, function(res) res$std_dev_VaR_Y)
+)
+
+# Print comparison table
+print(comparison_table)
+```
+
+3(a)
+
+```{r}
+if (!require("ggplot2")) install.packages("ggplot2")
+
+library(ggplot2)
+
+```
+
+```{r}
+# Define alpha for VaR calculation
+alpha <- 0.995
+theta <- 2
+sample_sizes <- c(1000, 10000, 100000)
+
+# Parameters for log-normal distribution
+mean_X <- 50
+var_X <- 25^2
+mean_Y <- 50
+var_Y <- 40^2
+
+# Calculate parameters for log-normal distribution
+mu_X <- log(mean_X^2 / sqrt(var_X + mean_X^2))
+sigma_X <- sqrt(log(1 + var_X / mean_X^2))
+
+mu_Y <- log(mean_Y^2 / sqrt(var_Y + mean_Y^2))
+sigma_Y <- sqrt(log(1 + var_Y / mean_Y^2))
+
+# Remind the same new Function to simulate log-normal RVs from uniform samples
+simulate_lognormal_rvs1 <- function(n, mu_X, sigma_X, mu_Y, sigma_Y) {
+  U <- runif(n)
+  V <- runif(n)
+  X <- qlnorm(U, mu_X, sigma_X)
+  Y <- qlnorm(V, mu_Y, sigma_Y)
+  return(list(X = X, Y = Y))
+}
+
+# Function to simulate Clayton survival copula
+simulate_clayton_survival_copula <- function(n, theta) {
+  # Define the Clayton copula
+  clayton_copula <- claytonCopula(theta, dim = 2)
+  # Simulate data from the Clayton copula
+  uv <- rCopula(n, clayton_copula)
+  # Transform to survival copula
+  uv_survival <- cbind(1 - uv[, 1], 1 - uv[, 2])
+  return(uv_survival)
+}
+
+
+# Function to calculate VaR and expected value
+calculate_rho <- function(samples, alpha) {
+  VaR <- quantile(samples, probs = alpha)
+  mean_val <- mean(samples)
+  rho <- VaR - mean_val
+  return(list(VaR = VaR, mean = mean_val, rho = rho))
+}
+
+# Function to calculate diversification benefit
+calculate_DB <- function(rho_Z, rho_X, rho_Y) {
+  DB <- 1 - (rho_Z / (rho_X + rho_Y))
+  return(DB)
+}
+
+# Function to calculate all rhos and DB for a given set of samples
+calculate_all_rhos <- function(X, Y, alpha) {
+  Z <- X + Y
+  rho_X <- calculate_rho(X, alpha)$rho
+  rho_Y <- calculate_rho(Y, alpha)$rho
+  rho_Z <- calculate_rho(Z, alpha)$rho
+  DB <- calculate_DB(rho_Z, rho_X, rho_Y)
+  return(list(rho_X = rho_X, rho_Y = rho_Y, rho_Z = rho_Z, DB = DB))
+}
+
+# Function to calculate correlation metrics
+calculate_correlations <- function(X, Y) {
+  pearson_corr <- cor(X, Y)
+  spearman_corr <- cor(X, Y, method = "spearman")
+  kendall_corr <- cor(X, Y, method = "kendall")
+  return(list(pearson = pearson_corr, spearman = spearman_corr, kendall = kendall_corr))
+}
+
+# Function to plot rank scatter plot
+plot_rank_scatter <- function(X, Y, title) {
+  df <- data.frame(X = rank(X), Y = rank(Y))
+  p <- ggplot(df, aes(x = X, y = Y)) +
+    geom_point(alpha = 0.5) +
+    labs(title = title, x = "Rank of X", y = "Rank of Y") +
+    theme_minimal()
+  print(p)
+}
+```
+
+```{r}
+# Iterate over sample sizes
+results <- lapply(sample_sizes, function(n) {
+  cat("Processing sample size:", n, "\n")
+  
+  # Simulate original log-normal samples
+  lognormal_samples <- simulate_lognormal_rvs1(n, mu_X, sigma_X, mu_Y, sigma_Y)
+  X_independent <- lognormal_samples$X
+  Y_independent <- lognormal_samples$Y
+  
+  # (i) Independent Risks
+  independent_results <- calculate_all_rhos(X_independent, Y_independent, alpha)
+  independent_correlations <- calculate_correlations(X_independent, Y_independent)
+  plot_rank_scatter(X_independent, Y_independent, paste("Independent Risks (n =", n, ")"))
+  
+  # (ii) Comonotonic Risks
+  X_comonotonic <- sort(X_independent)
+  Y_comonotonic <- sort(Y_independent)
+  comonotonic_results <- calculate_all_rhos(X_comonotonic, Y_comonotonic, alpha)
+  comonotonic_correlations <- calculate_correlations(X_comonotonic, Y_comonotonic)
+  plot_rank_scatter(X_comonotonic, Y_comonotonic, paste("Comonotonic Risks (n =", n, ")"))
+  
+  # (iii) Countermonotonic Risks
+  X_countermonotonic <- sort(X_independent)
+  Y_countermonotonic <- sort(Y_independent, decreasing = TRUE)
+  countermonotonic_results <- calculate_all_rhos(X_countermonotonic, Y_countermonotonic, alpha)
+  countermonotonic_correlations <- calculate_correlations(X_countermonotonic, Y_countermonotonic)
+  plot_rank_scatter(X_countermonotonic, Y_countermonotonic, paste("Countermonotonic Risks (n =", n, ")"))
+  
+  # (iv) Dependent Risks via Clayton Survival Copula
+  uv_clayton <- simulate_clayton_survival_copula(n, theta)
+  U_clayton <- uv_clayton[, 1]
+  V_clayton <- uv_clayton[, 2]
+  X_clayton <- qlnorm(U_clayton, mu_X, sigma_X)
+  Y_clayton <- qlnorm(V_clayton, mu_Y, sigma_Y)
+  clayton_results <- calculate_all_rhos(X_clayton, Y_clayton, alpha)
+  clayton_correlations <- calculate_correlations(X_clayton, Y_clayton)
+  plot_rank_scatter(X_clayton, Y_clayton, paste("Clayton Survival Copula Risks (n =", n, ")"))
+  
+  # Collect results
+  list(
+    sample_size = n,
+    independent = list(results = independent_results, correlations = independent_correlations),
+    comonotonic = list(results = comonotonic_results, correlations = comonotonic_correlations),
+    countermonotonic = list(results = countermonotonic_results, correlations = countermonotonic_correlations),
+    clayton = list(results = clayton_results, correlations = clayton_correlations)
+  )
+})
+
+# Print the results
+print(results)
+
+# Format results into a comparison table
+comparison_table <- do.call(rbind, lapply(results, function(res) {
+  data.frame(
+    Sample_Size = res$sample_size,
+    Independent_DB = res$independent$results$DB,
+    Comonotonic_DB = res$comonotonic$results$DB,
+    Countermonotonic_DB = res$countermonotonic$results$DB,
+    Clayton_DB = res$clayton$results$DB
+  )
+}))
+
+print(comparison_table)
+
+
+```
+```{r}
+if (!require("dplyr")) install.packages("dplyr")
+if (!require("knitr")) install.packages("knitr")
+if (!require("kableExtra")) install.packages("kableExtra")
+
+library(dplyr)
+library(knitr)
+library(kableExtra)
+```
+
+```{r}
+# Format results into a comparison table for correlations
+correlation_table <- do.call(rbind, lapply(results, function(res) {
+  data.frame(
+    Sample_Size = res$sample_size,
+    Type = c("Independent", "Comonotonic", "Countermonotonic", "Clayton"),
+    Pearson = c(res$independent$correlations$pearson, res$comonotonic$correlations$pearson, 
+                res$countermonotonic$correlations$pearson, res$clayton$correlations$pearson),
+    Spearman = c(res$independent$correlations$spearman, res$comonotonic$correlations$spearman, 
+                 res$countermonotonic$correlations$spearman, res$clayton$correlations$spearman),
+    Kendall = c(res$independent$correlations$kendall, res$comonotonic$correlations$kendall, 
+                res$countermonotonic$correlations$kendall, res$clayton$correlations$kendall)
+  )
+}))
+
+# Print the correlation table
+correlation_table %>%
+  kable("html") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = F)
+```
+
+
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
